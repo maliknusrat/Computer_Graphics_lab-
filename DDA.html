@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebGL Line Drawing Algorithms</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+        .bg-color {
+            background-color: black;
+        }
+    </style>
+</head>
+<body>
+    <canvas class="bg-color" id="glCanvas" width="640" height="480"></canvas>
+    <script>
+        document.addEventListener('DOMContentLoaded', start);
+
+        function start() {
+            const canvas = document.getElementById('glCanvas');
+            const gl = canvas.getContext('webgl');
+
+            if (!gl) {
+                console.error('Unable to initialize WebGL. Your browser may not support it.');
+                return;
+            }
+            gl.viewport(0, 0, canvas.width, canvas.height);
+
+            const vertexShaderSource = `
+                attribute vec2 a_position;
+                void main() {
+                    gl_PointSize = 1.0;
+                    gl_Position = vec4(a_position, 0.0, 1.0);
+                }
+            `;
+
+            const fragmentShaderSource = `
+                precision mediump float;
+                uniform vec4 u_color;
+                void main() {
+                    gl_FragColor = u_color;
+                }
+            `;
+
+            const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+            const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+            const program = createProgram(gl, vertexShader, fragmentShader);
+            gl.useProgram(program);
+
+            const positionAttributeLocation = gl.getAttribLocation(program, 'a_position');
+            const colorUniformLocation = gl.getUniformLocation(program, 'u_color');
+
+            const positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+
+            // DDA Algorithm in red color
+            function drawDDALine(x_start, y_start, x_end, y_end) {
+                let x = x_start, y = y_start;
+                let positions = [];
+
+                const dx = x_end - x_start;
+                const dy = y_end - y_start;
+                const steps = Math.max(Math.abs(dx), Math.abs(dy));
+
+                const xIncrement = dx / steps;
+                const yIncrement = dy / steps;
+
+                for (let i = 0; i <= steps; i++) {
+                    positions.push((2 * x / canvas.width) - 1, 1 - (2 * y / canvas.height));
+                    x += xIncrement;
+                    y += yIncrement;
+                }
+
+                return positions;
+            }
+
+            // plot pixel in Bresenham's algorithm
+            function plotPixel(x1, y1, x2, y2, dx, dy, decide, positions) {
+                let pk = 2 * dy - dx;
+                for (let i = 0; i <= dx; i++) {
+                    if (decide == 0) {
+                        positions.push((2 * x1 / canvas.width) - 1, 1 - (2 * y1 / canvas.height));
+                    } else {
+                        positions.push((2 * y1 / canvas.width) - 1, 1 - (2 * x1 / canvas.height));
+                    }
+
+                    if (x1 < x2) x1++; else x1--;
+
+                    if (pk < 0) {
+                        pk = pk + 2 * dy;
+                    } else {
+                        if (y1 < y2) y1++; else y1--;
+                        pk = pk + 2 * dy - 2 * dx;
+                    }
+                }
+            }
+
+            // Bresenham's Algorithm in green color
+            function drawBresenhamLine(x_start, y_start, x_end, y_end) {
+                let dx = Math.abs(x_end - x_start);
+                let dy = Math.abs(y_end - y_start);
+                let decide = (dx > dy) ? 0 : 1;
+
+                let positions = [];
+
+                if (decide == 0) {
+                    plotPixel(x_start, y_start, x_end, y_end, dx, dy, decide, positions);
+                } else {
+                    plotPixel(y_start, x_start, y_end, x_end, dy, dx, decide, positions);
+                }
+
+                return positions;
+            }
+
+            function drawLine(drawFunction, x_start, y_start, x_end, y_end, color) {
+                const positions = drawFunction(x_start, y_start, x_end, y_end);
+
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+                gl.enableVertexAttribArray(positionAttributeLocation);
+                gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+
+                gl.uniform4fv(colorUniformLocation, color);
+
+                gl.clearColor(0, 0, 0, 1);
+                //gl.clear(gl.COLOR_BUFFER_BIT);
+
+                gl.drawArrays(gl.POINTS, 0, positions.length / 2);
+            }
+
+            // Draw lines
+            drawLine(drawDDALine, 100, 100, 540, 380, [1, 0, 0, 1]);
+            drawLine(drawBresenhamLine, 100, 380, 540, 100, [0, 1, 0, 1]);
+
+            function createShader(gl, type, source) {
+                const shader = gl.createShader(type);
+                gl.shaderSource(shader, source);
+                gl.compileShader(shader);
+
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                    console.error('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+                    gl.deleteShader(shader);
+                    return null;
+                }
+
+                return shader;
+            }
+
+            function createProgram(gl, vertexShader, fragmentShader) {
+                const program = gl.createProgram();
+                gl.attachShader(program, vertexShader);
+                gl.attachShader(program, fragmentShader);
+                gl.linkProgram(program);
+
+                if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                    console.error('Unable to initialize the shader program: ' + gl.getProgramInfoLog(program));
+                    return null;
+                }
+
+                return program;
+            }
+        }
+    </script>
+</body>
+</html>
